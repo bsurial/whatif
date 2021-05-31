@@ -30,7 +30,7 @@ nice_p <- function (pval, digits = 4) {
                                         scientific = FALSE))
 }
 
-
+# Load data using the causaldata package
 nhef <- causaldata::nhefs
 
 # Data preparation for model and table 1
