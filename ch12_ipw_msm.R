@@ -236,3 +236,65 @@ tidy(lm12.6, conf.int = TRUE) %>%
 # Conf.int of qsmk:sex is -2.2 to 1.9, so no evidence for effect modification
 
 
+
+# Program 12.7 - Censoring and missing data -------------------------------
+
+
+vars2 <- c(vars, "qsmk")
+catvars2 <- c(catvars, "qsmk")
+
+CreateTableOne(vars2, strata = "cens", factorVars = catvars2, 
+               data =nhef) %>% 
+  print(contDigits = 1)
+
+m12.7qsmk <- glm(qsmk ~ sex + race + education + exercise + active + 
+                   age + I(age^2) + wt71 + I(wt71^2) + smokeintensity + 
+                   I(smokeintensity^2) + smokeyrs + I(smokeyrs^2), 
+                 family = binomial(link = "logit"), data = nhef)
+
+m12.7qsmk_num <- glm(qsmk ~ 1,  family = binomial(link = "logit"), data = nhef)
+
+
+# Model probabilitiy of being censored
+m12.7cens <- glm(cens ~ qsmk + sex + race + education + exercise + active + 
+                   age + I(age^2) + wt71 + I(wt71^2) + smokeintensity + 
+                   I(smokeintensity^2) + smokeyrs + I(smokeyrs^2), 
+                 family = binomial(link = "logit"), data = nhef)
+
+m12.7cens_num <- glm(cens ~ qsmk, family = binomial, data = nhef)
+
+
+# it's 1-predict because we estimate the probabilty to be uncensored
+nhef <- nhef %>% 
+  mutate(pd.qsmk = predict(m12.7qsmk, type = "response"), 
+         pn.qsmk = predict(m12.7qsmk_num, type = "response"), 
+         pd.cens = 1 - predict(m12.7cens, type = "response"), 
+         pn.cens = 1 - predict(m12.7cens_num, type = "response")) %>% 
+  mutate(sw.a = if_else(qsmk == 1, pn.qsmk / pd.qsmk, 
+                        (1 - pn.qsmk) / (1 - pd.qsmk)), 
+         sw.c = if_else(cens == 0, pn.cens / pd.cens, 
+                        (1 - pn.cens) / (1 - pd.cens))) %>% 
+  mutate(sw = sw.a * sw.c)
+
+
+summary(nhef$sw)
+
+# Model
+svydes.12.7 <- svydesign(
+  ids = ~seqn, 
+  weights = ~sw, 
+  data = nhef
+)
+
+
+lm12.7 <- svyglm(wt82_71 ~ qsmk, design = svydes.12.7)
+
+# Compare the models
+bind_rows(tab12.2, tab12.3, 
+          tidy(lm12.7, conf.int = T) %>% 
+            filter(term == "qsmk") %>% 
+            select(term, estimate, conf.low, conf.high, p.value) %>% 
+            mutate(across(estimate:conf.high, round, 1), 
+                   p.value = bernr::nice_p(p.value), 
+                   model = "incl. censoring weights"))
+  
