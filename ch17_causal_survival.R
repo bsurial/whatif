@@ -53,6 +53,7 @@ ggsurvplot(fit,
            xlab = "Months of Follow-Up", 
            risk.table = TRUE)
 
+summary(fit, time = 120)
 
 
 
@@ -106,3 +107,62 @@ new %>%
        color = "Treatment", linetype = "Treatment") + 
   theme_bw() + 
   theme(panel.grid = element_blank())
+
+
+
+
+# Program 17.3 - IP weighting ---------------------------------------------
+
+
+m17.3d <- glm(qsmk ~ sex + race + education + exercise + active + 
+                age + I(age^2) + wt71 + I(wt71^2) + smokeintensity + 
+                I(smokeintensity^2) + smokeyrs + I(smokeyrs^2), 
+              family = binomial(link = "logit"), data = nhefs)
+
+# Calculate prediction
+m17.3n <- glm(qsmk ~ 1, family = binomial(link = "logit"), data = nhefs)
+
+nhefs <- nhefs %>% 
+  mutate(p.d = predict(m17.3d, type = "response"), 
+         p.n = predict(m17.3n, type = "response"), 
+         p.d = if_else(qsmk == 1, p.d, 1 - p.d), 
+         p.n = if_else(qsmk == 1, p.n, 1 - p.n)) %>% 
+  mutate(wt_st = p.n / p.d)
+
+summary(nhefs$wt_st)
+
+# Add weights to person-time format
+df <- df %>% 
+  left_join(nhefs %>% select(seqn, wt_st))
+
+
+# Fit a logistic regression but now with weights
+
+svydes17.3 <- svydesign(ids = ~seqn, 
+                        weights = ~wt_st, 
+                        data = df)
+lm17.3 <- svyglm(event == 0 ~ qsmk * time + qsmk * timesq, 
+                 family = binomial, design = svydes17.3)
+
+new <- new %>%
+  select(time:timesq)
+  
+new$p <- predict(lm17.3, new, type = "response")
+
+new <- new %>% 
+  group_by(qsmk) %>% 
+  mutate(surv = cumprod(p))
+
+# plot Figure 17.6
+new %>% 
+  ggplot(aes(x = time, y = surv)) +
+  geom_line(aes(color = factor(qsmk))) +
+  expand_limits(y = 0.5) + 
+  labs(x = "Months of follow-up", y = "Survival probability", 
+       color = "treatment") + 
+  theme_bw(base_family = "Open Sans") + 
+  theme(panel.grid = element_blank())
+
+# Estimate the survival estimate at 120 months for qsmk == 1 and 0
+new %>% 
+  filter(time == 119)
