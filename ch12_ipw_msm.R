@@ -1,13 +1,14 @@
-# Chapter 12: IP Weighting and Marginal Structural Models
+# ------------------------------------------------------- #
+# Chapter 12: IP Weighting and Marginal Structural Models #
+# ------------------------------------------------------- #
 
+# Load packages
 library(tidyverse)
 library(broom)
 library(tableone)
 library(survey)
 
 nhef <- causaldata::nhefs
-causaldata::nhefs_codebook %>% 
-  print(n = 64)
 
 # Data preparation for model and table 1
 nhef$cens <- ifelse(is.na(nhef$wt82), 1, 0)
@@ -21,7 +22,6 @@ nhef <- nhef %>%
 # Remove those with missing data at 1982
 nhef.nmv <- nhef %>% 
   filter(!is.na(wt82))
-
 
 
 
@@ -48,6 +48,8 @@ catvars <- c("male", "white", "university", "little_exercise", "inactive")
 CreateTableOne(vars = vars, strata = "qsmk", data = nhef.nmv, 
                factorVars = catvars) %>% 
   print(contDigits = 1)
+
+
 
 
 # Program 12.2 - Modeling IP weights --------------------------------------
@@ -88,6 +90,8 @@ tab12.2 <- tidy(lm12.2, conf.int = TRUE) %>%
 tab12.2
          
 
+
+
 # Program 12.3 - Stabilized IP weights ------------------------------------
 
 # Estimate numerator
@@ -114,4 +118,50 @@ tab12.3 <- tidy(lm12.3, conf.int = TRUE) %>%
   select(term, estimate, conf.low, conf.high, p.value) %>% 
   mutate(model = "stab. weights")
 
-bind_rows(tab12.2, tab12.3) # The same
+bind_rows(tab12.2, tab12.3) # They are the same
+
+
+
+
+
+# Program 12.4 - Marginal structural models -------------------------------
+
+# Subset to individuals who smoked 25 or less cigarettes per day at BL
+nhef.smokeint25 <- nhef.nmv %>% 
+  filter(smokeintensity <= 25)
+
+# Estimate difference in smk-intensity using full model
+m12.4_den <- lm(
+  smkintensity82_71 ~ as.factor(sex) +
+    as.factor(race) + age + I(age ^ 2) +
+    as.factor(education) + smokeintensity + I(smokeintensity ^ 2) +
+    smokeyrs + I(smokeyrs ^ 2) + as.factor(exercise) + as.factor(active) + wt71 +
+    I(wt71 ^ 2),
+  data = nhef.smokeint25
+)
+
+# Calculate probability density function
+
+p.den <- predict(m12.4_den, type = "response") # probabilty of Denominator
+
+dens.den <- dnorm(nhef.smokeint25$smkintensity82_71, 
+                  p.den, 
+                  summary(m12.4_den)$sigma) # Density of Denominator
+
+m12.4_num <- lm(
+  smkintensity82_71 ~ 1,
+  data = nhef.smokeint25
+)
+
+p.num <- predict(m12.4_num, type = "response") # Probability of Numerator
+
+dens.num <- dnorm(nhef.smokeint25$smkintensity82_71, 
+                  p.num, 
+                  summary(m12.4_num)$sigma) # Density of Numerator
+
+# Calculate stabilized weight
+nhef.smokeint25 <- nhef.smokeint25 %>% 
+  mutate(msm = dens.num / dens.den)
+
+summary(nhef.smokeint25$msm) %>% round(2)
+
