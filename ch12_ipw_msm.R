@@ -165,3 +165,74 @@ nhef.smokeint25 <- nhef.smokeint25 %>%
 
 summary(nhef.smokeint25$msm) %>% round(2)
 
+
+# Estimate difference in weight depending on smoking intensity
+
+svydes.12.4 <- svydesign(ids = ~ seqn, 
+          weights = ~ msm, 
+          data = nhef.smokeint25)
+
+
+lm12.4 <- svyglm(wt82_71 ~ smkintensity82_71 + I(smkintensity82_71 ^2), 
+                 design = svydes.12.4, family = gaussian)
+
+
+predict(lm12.4, data.frame(smkintensity82_71 = c(20, 0, -20))) %>% 
+  as_tibble() %>% 
+  mutate(smkintensity82_71 = c(20, 0, -20), 
+         conf.low = link - 1.96 * SE, 
+         conf.high = link + 1.96 * SE) %>% 
+  relocate(smkintensity82_71) %>% 
+  mutate(across(c(link, conf.low, conf.high), round, 1))
+
+
+
+# Program 12.5 - Marginal structural logistic model -----------------------
+
+# Stabilized weights for qsmk are taken from Program 12.3
+svydes.12.5 <- svydesign(ids = ~ seqn, weights = ~wt_stab, 
+                         data = nhef.nmv)
+
+m12.5 <- svyglm(death ~ qsmk, family = binomial(link = "logit"), 
+                design = svydes.12.5)
+
+
+tidy(m12.5, exp = TRUE, conf.int = TRUE) %>% 
+  select(term, estimate, conf.low, conf.high, p.value) %>% 
+  mutate(across(c(estimate, conf.low, conf.high), round, 1), 
+         p.value = bernr::nice_p(p.value, 2)) %>% 
+  filter(term == "qsmk")
+
+
+
+# Program 12.6 - Effect modification using marginal structural mod --------
+
+# Estimate probabilty of qsmk, by sex (numerator)
+m12.6 <- glm(qsmk ~ sex, data = nhef.nmv, family = binomial)
+
+# Denominator is m12.2 (needs to include sex!)
+
+nhef.nmv <- nhef.nmv %>% 
+  mutate(prop_sex = predict(m12.6, type = "response"), 
+         wt_sex = prop_sex / prop) # Prop is based on m12.2
+
+summary(nhef.nmv$wt_sex)
+
+# Create design for svyglm
+svydes.12.6 <- svydesign(
+  ids = ~seqn, 
+  weights = ~wt_sex, 
+  data = nhef.nmv
+)
+
+# Fit causal model with interaction
+lm12.6 <- svyglm(wt82_71 ~ qsmk * sex, design = svydes.12.6, 
+                 family = gaussian())
+
+
+tidy(lm12.6, conf.int = TRUE) %>% 
+  mutate(across(c(estimate, conf.low, conf.high), round, 1))
+
+# Conf.int of qsmk:sex is -2.2 to 1.9, so no evidence for effect modification
+
+
