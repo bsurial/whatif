@@ -2,11 +2,34 @@
 # Chapter 12: IP Weighting and Marginal Structural Models #
 # ------------------------------------------------------- #
 
+# This code is used to replicate the results from the book "What If?" by 
+# M. Hernan and colleagues: 
+# https://www.hsph.harvard.edu/miguel-hernan/causal-inference-book/
+
+# I also had a look at the code from T. Palmer found here: 
+# https://remlapmot.github.io/cibookex-r/ip-weighting-and-marginal-structural-models.html
+
+# I just used my own coding style and the tidyverse framework
+
+## At first time, install packages
+# install.packages(c("tidyverse", "broom", "tableone", "survey", "causaldata")) 
+
+
 # Load packages
 library(tidyverse)
 library(broom)
 library(tableone)
 library(survey)
+
+# Function for p-value formatting taken from my bernr package
+nice_p <- function (pval, digits = 4) {
+  if (!is.numeric(pval)) {
+    stop("pval has tu be numeric")
+  }
+  ifelse(pval < 0.001, "<0.001", format(round(pval, digits), 
+                                        scientific = FALSE))
+}
+
 
 nhef <- causaldata::nhefs
 
@@ -31,7 +54,7 @@ nhef.nmv <- nhef %>%
 lm(wt82_71 ~ qsmk, nhef.nmv) %>% 
   tidy(conf.int = TRUE) %>% 
   mutate(across(c(estimate, conf.low, conf.high), round, 1)) %>% 
-  mutate(p.value = bernr::nice_p(p.value)) %>% 
+  mutate(p.value = nice_p(p.value)) %>% 
   filter(term == "qsmk") %>% 
   select(term, estimate, conf.low, conf.high, p.value)
 
@@ -82,7 +105,7 @@ lm12.2 <- svyglm(wt82_71 ~ qsmk, design = des12.2, family = gaussian)
 
 tab12.2 <- tidy(lm12.2, conf.int = TRUE) %>% 
   mutate(across(c(estimate, conf.low, conf.high), round, 1), 
-         p.value = bernr::nice_p(p.value)) %>% 
+         p.value = nice_p(p.value)) %>% 
   filter(term == "qsmk") %>% 
   select(term, estimate, conf.low, conf.high, p.value) %>% 
   mutate(model = "unstab. weights")
@@ -113,7 +136,7 @@ lm12.3 <- svyglm(wt82_71 ~ qsmk, design = des12.3, family = gaussian)
 
 tab12.3 <- tidy(lm12.3, conf.int = TRUE) %>% 
   mutate(across(c(estimate, conf.low, conf.high), round, 1), 
-         p.value = bernr::nice_p(p.value)) %>% 
+         p.value = nice_p(p.value)) %>% 
   filter(term == "qsmk") %>% 
   select(term, estimate, conf.low, conf.high, p.value) %>% 
   mutate(model = "stab. weights")
@@ -200,7 +223,7 @@ m12.5 <- svyglm(death ~ qsmk, family = binomial(link = "logit"),
 tidy(m12.5, exp = TRUE, conf.int = TRUE) %>% 
   select(term, estimate, conf.low, conf.high, p.value) %>% 
   mutate(across(c(estimate, conf.low, conf.high), round, 1), 
-         p.value = bernr::nice_p(p.value, 2)) %>% 
+         p.value = nice_p(p.value, 2)) %>% 
   filter(term == "qsmk")
 
 
@@ -295,6 +318,6 @@ bind_rows(tab12.2, tab12.3,
             filter(term == "qsmk") %>% 
             select(term, estimate, conf.low, conf.high, p.value) %>% 
             mutate(across(estimate:conf.high, round, 1), 
-                   p.value = bernr::nice_p(p.value), 
+                   p.value = nice_p(p.value), 
                    model = "incl. censoring weights"))
   
